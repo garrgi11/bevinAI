@@ -18,42 +18,85 @@ const SYSTEM_MESSAGE = {
 };
 
 // Call Nemotron
-async function callNemotron(messages) {
-  const completion = await openai.chat.completions.create({
-    model: "nvidia/nvidia-nemotron-nano-9b-v2",
-    messages,
-    temperature: 0.4,
-    top_p: 0.9,
-    max_tokens: 2048,
-    stream: true,
-    extra_body: {
-      min_thinking_tokens: 512,
-      max_thinking_tokens: 1536
-    }
-  });
+async function callNemotron(messages, maxRetries = 2) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "nvidia/nvidia-nemotron-nano-9b-v2",
+        messages,
+        temperature: 0.4,
+        top_p: 0.9,
+        max_tokens: 4096, // Increased from 2048
+        stream: true,
+        extra_body: {
+          min_thinking_tokens: 256, // Reduced to allow more content tokens
+          max_thinking_tokens: 768
+        }
+      });
 
-  let content = "";
-  let reasoning = "";
+      let content = "";
+      let reasoning = "";
 
-  for await (const chunk of completion) {
-    const delta = chunk.choices?.[0]?.delta || {};
-    if (delta.reasoning_content) {
-      reasoning += delta.reasoning_content;
-    }
-    if (delta.content) {
-      content += delta.content;
+      for await (const chunk of completion) {
+        const delta = chunk.choices?.[0]?.delta || {};
+        if (delta.reasoning_content) {
+          reasoning += delta.reasoning_content;
+        }
+        if (delta.content) {
+          content += delta.content;
+        }
+      }
+
+      // Try to parse JSON
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch (err) {
+        console.error(`Attempt ${attempt}: Failed to parse JSON:`, err.message);
+        console.log("Raw content length:", content.length);
+        console.log("Raw content preview:", content.substring(0, 200) + "...");
+        console.log("Raw content end:", "..." + content.substring(content.length - 200));
+        
+        // Try to fix incomplete JSON by adding closing braces
+        let fixedContent = content.trim();
+        
+        // Count opening and closing braces
+        const openBraces = (fixedContent.match(/{/g) || []).length;
+        const closeBraces = (fixedContent.match(/}/g) || []).length;
+        const openBrackets = (fixedContent.match(/\[/g) || []).length;
+        const closeBrackets = (fixedContent.match(/]/g) || []).length;
+        
+        // Try to close unclosed structures
+        if (openBrackets > closeBrackets) {
+          fixedContent += ']'.repeat(openBrackets - closeBrackets);
+        }
+        if (openBraces > closeBraces) {
+          fixedContent += '}'.repeat(openBraces - closeBraces);
+        }
+        
+        try {
+          parsed = JSON.parse(fixedContent);
+          console.log("✅ Successfully fixed incomplete JSON");
+        } catch (fixErr) {
+          if (attempt < maxRetries) {
+            console.log(`Retrying... (${attempt}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+            continue;
+          }
+          throw new Error("Nemotron returned invalid JSON after all attempts.");
+        }
+      }
+
+      return { parsed, reasoning, raw: content };
+    } catch (error) {
+      if (attempt < maxRetries) {
+        console.log(`Attempt ${attempt} failed, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+      throw error;
     }
   }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(content);
-  } catch (err) {
-    console.error("Failed to parse Nemotron JSON:", err, "\nRaw content:", content);
-    throw new Error("Nemotron returned invalid JSON.");
-  }
-
-  return { parsed, reasoning, raw: content };
 }
 
 // Build prompts
@@ -170,31 +213,50 @@ async function analyzeRequirementsForProject(projectId) {
   const { company, project } = await getCompanyAndProject(projectId);
   console.log(`📊 Company: ${company.name}, Project: ${project.project_name}`);
 
+  let functionalReport = null;
+  let costReport = null;
+  let marketReport = null;
+
   // Generate Functional
-  console.log("\n1️⃣ Generating Functional Requirements Report...");
-  const functionalMessages = buildFunctionalMessages(company, project);
-  const { parsed: functionalReport, reasoning: functionalReasoning } =
-    await callNemotron(functionalMessages);
-  await insertReport(project.project_id, "functional", functionalReport, functionalReasoning);
-  console.log("✅ Functional report saved");
+  try {
+    console.log("\n1️⃣ Generating Functional Requirements Report...");
+    const functionalMessages = buildFunctionalMessages(company, project);
+    const { parsed, reasoning } = await callNemotron(functionalMessages);
+    functionalReport = parsed;
+    await insertReport(project.project_id, "functional", functionalReport, reasoning);
+    console.log("✅ Functional report saved");
+  } catch (error) {
+    console.error("❌ Failed to generate functional report:", error.message);
+    functionalReport = { error: error.message, report_text: "Failed to generate functional report" };
+  }
 
   // Generate Cost
-  console.log("\n2️⃣ Generating Cost Analysis Report...");
-  const costMessages = buildCostMessages(company, project);
-  const { parsed: costReport, reasoning: costReasoning } =
-    await callNemotron(costMessages);
-  await insertReport(project.project_id, "cost", costReport, costReasoning);
-  console.log("✅ Cost report saved");
+  try {
+    console.log("\n2️⃣ Generating Cost Analysis Report...");
+    const costMessages = buildCostMessages(company, project);
+    const { parsed, reasoning } = await callNemotron(costMessages);
+    costReport = parsed;
+    await insertReport(project.project_id, "cost", costReport, reasoning);
+    console.log("✅ Cost report saved");
+  } catch (error) {
+    console.error("❌ Failed to generate cost report:", error.message);
+    costReport = { error: error.message, report_text: "Failed to generate cost analysis report" };
+  }
 
   // Generate Market
-  console.log("\n3️⃣ Generating Market Research Report...");
-  const marketMessages = buildMarketMessages(company, project);
-  const { parsed: marketReport, reasoning: marketReasoning } =
-    await callNemotron(marketMessages);
-  await insertReport(project.project_id, "market_research", marketReport, marketReasoning);
-  console.log("✅ Market research report saved");
+  try {
+    console.log("\n3️⃣ Generating Market Research Report...");
+    const marketMessages = buildMarketMessages(company, project);
+    const { parsed, reasoning } = await callNemotron(marketMessages);
+    marketReport = parsed;
+    await insertReport(project.project_id, "market_research", marketReport, reasoning);
+    console.log("✅ Market research report saved");
+  } catch (error) {
+    console.error("❌ Failed to generate market research report:", error.message);
+    marketReport = { error: error.message, report_text: "Failed to generate market research report" };
+  }
 
-  // Upsert to project_analysis
+  // Upsert to project_analysis (save whatever we have)
   console.log("\n4️⃣ Saving to project_analysis table...");
   await upsertProjectAnalysis(
     project.project_id,
@@ -203,6 +265,16 @@ async function analyzeRequirementsForProject(projectId) {
     marketReport
   );
   console.log("✅ Project analysis saved");
+
+  // Check if all reports failed
+  const allFailed = 
+    functionalReport?.error && 
+    costReport?.error && 
+    marketReport?.error;
+
+  if (allFailed) {
+    throw new Error("All report generation failed");
+  }
 
   return {
     project_id: project.project_id,

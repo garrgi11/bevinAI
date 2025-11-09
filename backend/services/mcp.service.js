@@ -380,6 +380,54 @@ Analysis Status: ${analysis ? 'Available' : 'Not yet generated'}
       throw error;
     }
   }
+
+  /**
+   * Get project analysis reports
+   */
+  async getProjectAnalysis(projectId) {
+    try {
+      const [rows] = await pool.execute(
+        'SELECT * FROM project_analysis WHERE project_id = ?',
+        [projectId]
+      );
+      return rows[0] || null;
+    } catch (error) {
+      console.error('Error fetching project analysis:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save tech stack decision
+   */
+  async saveTechStackDecision(projectId, decisionData) {
+    try {
+      await pool.execute(
+        'INSERT INTO tech_stack_decision (project_id, decision_json) VALUES (?, ?) ON DUPLICATE KEY UPDATE decision_json = ?, generated_at = CURRENT_TIMESTAMP',
+        [projectId, JSON.stringify(decisionData), JSON.stringify(decisionData)]
+      );
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving tech stack decision:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get tech stack decision
+   */
+  async getTechStackDecision(projectId) {
+    try {
+      const [rows] = await pool.execute(
+        'SELECT * FROM tech_stack_decision WHERE project_id = ?',
+        [projectId]
+      );
+      return rows[0] || null;
+    } catch (error) {
+      console.error('Error fetching tech stack decision:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new MCPService();

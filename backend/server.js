@@ -105,6 +105,12 @@ app.post('/api/v1/requirements/submit', async (req, res) => {
       
       console.log('✅ All reports generated and saved successfully');
 
+      // Push reports to Slack (non-blocking)
+      const { pushProjectReportsToSlack } = require('./services/slack.service');
+      pushProjectReportsToSlack(projectResult.projectId).catch(err => {
+        console.error('⚠️ Slack notification failed (non-critical):', err.message);
+      });
+
       res.json({
         success: true,
         message: 'Requirements analyzed and saved successfully',
@@ -310,9 +316,10 @@ app.get('/api/v1/projects/:id/reports', async (req, res) => {
   }
 });
 
-app.get('/api/v1/reports/:id', async (req, res) => {
+// Get individual report by report_id (from report table)
+app.get('/api/v1/report/:reportId', async (req, res) => {
   try {
-    const report = await mcpService.getReportById(req.params.id);
+    const report = await mcpService.getReportById(req.params.reportId);
     if (report) {
       res.json({ success: true, data: report });
     } else {
@@ -320,6 +327,294 @@ app.get('/api/v1/reports/:id', async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== TECH STACK DECISION ENDPOINT ====================
+
+app.post('/api/v1/techstack/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    
+    console.log(`🔧 Generating tech stack decision for project ID: ${projectId}`);
+    
+    // Get project, company, and analysis data
+    const project = await mcpService.getProjectById(projectId);
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+    
+    const company = await mcpService.getCompanyById(project.company_id);
+    const analysis = await mcpService.getProjectAnalysis(projectId);
+    
+    if (!analysis) {
+      return res.status(404).json({ success: false, error: 'Analysis reports not found' });
+    }
+    
+    // Build messages for tech stack decision
+    const { buildTechStackDecisionMessages } = require('./services/buildTechStackDecisionMessages');
+    const messages = buildTechStackDecisionMessages(company, project, analysis);
+    
+    // Call LLM to generate tech stack decision using OpenAI client directly
+    console.log('🤖 Calling LLM for tech stack decision...');
+    const OpenAI = require('openai').default;
+    const openai = new OpenAI({
+      apiKey: process.env.NVIDIA_API_KEY,
+      baseURL: "https://integrate.api.nvidia.com/v1"
+    });
+    
+    const completion = await openai.chat.completions.create({
+      model: "nvidia/nvidia-nemotron-nano-9b-v2",
+      messages,
+      temperature: 0.4,
+      top_p: 0.9,
+      max_tokens: 4096,
+      stream: false // Don't stream for simpler parsing
+    });
+    
+    const content = completion.choices[0].message.content;
+    
+    // Parse the JSON response
+    let decisionData;
+    try {
+      decisionData = JSON.parse(content);
+    } catch (parseError) {
+      console.error('❌ Failed to parse LLM response as JSON:', parseError);
+      console.log('Raw content:', content.substring(0, 500));
+      return res.status(500).json({ success: false, error: 'Invalid JSON response from LLM' });
+    }
+    
+    // Store in database
+    await mcpService.saveTechStackDecision(projectId, decisionData);
+    
+    console.log('✅ Tech stack decision generated and saved');
+    
+    res.json({
+      success: true,
+      data: decisionData
+    });
+  } catch (error) {
+    console.error('❌ Error generating tech stack decision:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate tech stack decision',
+      message: error.message
+    });
+  }
+});
+
+app.get('/api/v1/techstack/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    
+    const decision = await mcpService.getTechStackDecision(projectId);
+    
+    if (!decision) {
+      return res.status(404).json({ success: false, error: 'Tech stack decision not found' });
+    }
+    
+    res.json({
+      success: true,
+      data: JSON.parse(decision.decision_json)
+    });
+  } catch (error) {
+    console.error('❌ Error fetching tech stack decision:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch tech stack decision',
+      message: error.message
+    });
+  }
+});
+
+// ==================== REPORTS ENDPOINT ====================
+
+app.get('/api/v1/reports/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    
+    console.log(`📊 Fetching reports for project ID: ${projectId}`);
+    
+    // Get project details
+    const project = await mcpService.getProjectById(projectId);
+    
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found'
+      });
+    }
+    
+    // Get analysis reports from project_analysis table
+    const reports = await mcpService.getProjectAnalysis(projectId);
+    
+    console.log('📊 Reports from database:', {
+      hasReports: !!reports,
+      functionalityLength: reports?.functionality_report?.length || 0,
+      costLength: reports?.cost_analysis_report?.length || 0,
+      marketLength: reports?.market_analysis_report?.length || 0
+    });
+    
+    if (!reports) {
+      return res.status(404).json({
+        success: false,
+        error: 'Reports not found for this project'
+      });
+    }
+    
+    // Helper function to format JSON report into readable text
+    const formatReport = (reportJson, reportName) => {
+      if (!reportJson) return 'Report not available';
+      
+      try {
+        let parsed = reportJson;
+        if (typeof reportJson === 'string') {
+          parsed = JSON.parse(reportJson);
+        }
+        
+        // Build formatted text from JSON fields
+        let text = '';
+        
+        if (parsed.report_title) {
+          text += `${parsed.report_title}\n\n`;
+        }
+        
+        if (parsed.summary) {
+          text += `SUMMARY\n${parsed.summary}\n\n`;
+        }
+        
+        if (parsed.core_capabilities && Array.isArray(parsed.core_capabilities)) {
+          text += `CORE CAPABILITIES\n`;
+          parsed.core_capabilities.forEach((cap, i) => text += `${i + 1}. ${cap}\n`);
+          text += '\n';
+        }
+        
+        if (parsed.infrastructure_costs) {
+          text += `INFRASTRUCTURE COSTS\n`;
+          Object.entries(parsed.infrastructure_costs).forEach(([key, value]) => {
+            text += `- ${key.replace(/_/g, ' ')}: $${value}\n`;
+          });
+          text += '\n';
+        }
+        
+        if (parsed.development_effort) {
+          text += `DEVELOPMENT EFFORT\n`;
+          Object.entries(parsed.development_effort).forEach(([key, value]) => {
+            text += `- ${key.replace(/_/g, ' ')}: $${value}\n`;
+          });
+          text += '\n';
+        }
+        
+        if (parsed.tco_projection) {
+          text += `TOTAL COST OF OWNERSHIP\n`;
+          if (parsed.tco_projection.total_estimated_cost) {
+            text += `Total: $${parsed.tco_projection.total_estimated_cost}\n`;
+          }
+          if (parsed.tco_projection.breakdown) {
+            text += 'Breakdown:\n';
+            Object.entries(parsed.tco_projection.breakdown).forEach(([key, value]) => {
+              text += `  - ${key}: ${value}\n`;
+            });
+          }
+          text += '\n';
+        }
+        
+        if (parsed.market_opportunity) {
+          text += `MARKET OPPORTUNITY\n`;
+          Object.entries(parsed.market_opportunity).forEach(([key, value]) => {
+            text += `- ${key.replace(/_/g, ' ')}: ${value}\n`;
+          });
+          text += '\n';
+        }
+        
+        if (parsed.competitive_landscape && Array.isArray(parsed.competitive_landscape)) {
+          text += `COMPETITIVE LANDSCAPE\n`;
+          parsed.competitive_landscape.forEach((comp, i) => text += `${i + 1}. ${comp}\n`);
+          text += '\n';
+        }
+        
+        if (parsed.recommended_actions && Array.isArray(parsed.recommended_actions)) {
+          text += `RECOMMENDED ACTIONS\n`;
+          parsed.recommended_actions.forEach((action, i) => text += `${i + 1}. ${action}\n`);
+          text += '\n';
+        }
+        
+        if (parsed.epic_suggestions && Array.isArray(parsed.epic_suggestions)) {
+          text += `EPIC SUGGESTIONS\n`;
+          parsed.epic_suggestions.forEach((epic, i) => text += `${i + 1}. ${epic}\n`);
+          text += '\n';
+        }
+        
+        if (parsed.ticket_outline && Array.isArray(parsed.ticket_outline)) {
+          text += `TICKET OUTLINE\n`;
+          parsed.ticket_outline.forEach((ticket, i) => text += `${i + 1}. ${ticket}\n`);
+          text += '\n';
+        }
+        
+        // If we couldn't extract any text, return formatted JSON
+        if (!text.trim()) {
+          text = JSON.stringify(parsed, null, 2);
+        }
+        
+        return text;
+      } catch (e) {
+        console.error(`Error formatting ${reportName}:`, e);
+        return typeof reportJson === 'string' ? reportJson : JSON.stringify(reportJson, null, 2);
+      }
+    };
+    
+    const functionalityReport = formatReport(reports.functionality_report, 'Functionality Report');
+    const costAnalysisReport = formatReport(reports.cost_analysis_report, 'Cost Analysis Report');
+    const marketAnalysisReport = formatReport(reports.market_analysis_report, 'Market Analysis Report');
+    
+    console.log('📊 Formatted reports lengths:', {
+      functionality: functionalityReport.length,
+      cost: costAnalysisReport.length,
+      market: marketAnalysisReport.length
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        project_name: project.project_name,
+        functionality_report: functionalityReport,
+        cost_analysis_report: costAnalysisReport,
+        market_analysis_report: marketAnalysisReport,
+        generated_at: reports.generated_at
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching reports:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch reports',
+      message: error.message
+    });
+  }
+});
+
+// ==================== JIRA TICKETS ENDPOINT ====================
+
+app.post('/api/v1/jira/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    
+    console.log(`🎫 Generating Jira tickets for project ID: ${projectId}`);
+    
+    const { generateAndCreateJiraTickets } = require('./services/jira.service');
+    const result = await generateAndCreateJiraTickets(projectId);
+    
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('❌ Error generating Jira tickets:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate Jira tickets',
+      message: error.message
+    });
   }
 });
 

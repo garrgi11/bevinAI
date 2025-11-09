@@ -66,3 +66,14 @@ CREATE TABLE IF NOT EXISTS project_analysis (
         REFERENCES project(project_id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- Tech Stack Decision Table (for storing AI-generated tech stack recommendations)
+CREATE TABLE IF NOT EXISTS tech_stack_decision (
+    project_id INT UNSIGNED NOT NULL,
+    decision_json LONGTEXT NOT NULL,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (project_id),
+    FOREIGN KEY (project_id)
+        REFERENCES project(project_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;

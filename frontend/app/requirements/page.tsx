@@ -109,30 +109,10 @@ export default function RequirementsPage() {
   }
 
   const handleAnalysisComplete = () => {
-    // Show success message
-    alert(
-      `✅ Analysis Complete!\n\n` +
-      `Project ID: ${analysisResult?.projectId}\n` +
-      `Company ID: ${analysisResult?.companyId}\n\n` +
-      `All reports have been generated and saved.`
-    )
-    
-    // Optionally redirect to results page
-    // router.push(`/results/${analysisResult?.projectId}`)
-    
-    // Or reset form
-    setShowLoader(false)
-    setSelectedCompany(null)
-    setFormData({
-      companyId: "",
-      companyResources: "",
-      projectName: "",
-      projectDescription: "",
-      businessObjectives: "",
-      targetAudience: "",
-      budgetRange: "Flexible",
-      timeline: "Flexible",
-    })
+    // Redirect to report results page
+    if (analysisResult?.projectId) {
+      router.push(`/reportresults?projectId=${analysisResult.projectId}`)
+    }
   }
 
   return (
