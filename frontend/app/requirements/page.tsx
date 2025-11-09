@@ -2,11 +2,27 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import AnalysisLoader from "../components/AnalysisLoader"
+
+interface Company {
+  company_id: number
+  name: string
+  company_resources: string | null
+}
 
 export default function RequirementsPage() {
+  const router = useRouter()
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
+  const [showLoader, setShowLoader] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<any>(null)
+  
   const [formData, setFormData] = useState({
+    companyId: "",
+    companyResources: "",
     projectName: "",
     projectDescription: "",
     businessObjectives: "",
@@ -17,7 +33,36 @@ export default function RequirementsPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const isFormValid = formData.projectName.trim() && formData.projectDescription.trim()
+  const isFormValid = formData.companyId && formData.projectName.trim() && formData.projectDescription.trim()
+
+  // Fetch companies on mount
+  useEffect(() => {
+    const fetchCompanies = async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+        const response = await fetch(`${apiUrl}/api/v1/companies`)
+        const result = await response.json()
+        if (result.success) {
+          setCompanies(result.data)
+        }
+      } catch (error) {
+        console.error("Error fetching companies:", error)
+      }
+    }
+    fetchCompanies()
+  }, [])
+
+  const handleCompanyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const companyId = e.target.value
+    const company = companies.find(c => c.company_id.toString() === companyId)
+    
+    setSelectedCompany(company || null)
+    setFormData((prev) => ({
+      ...prev,
+      companyId,
+      companyResources: company?.company_resources || ""
+    }))
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -32,8 +77,11 @@ export default function RequirementsPage() {
     if (!isFormValid) return
 
     setIsSubmitting(true)
+    setShowLoader(true)
+
     try {
-      const response = await fetch("/api/v1/requirements/submit/", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+      const response = await fetch(`${apiUrl}/api/v1/requirements/submit`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -41,26 +89,61 @@ export default function RequirementsPage() {
         body: JSON.stringify(formData),
       })
 
-      if (response.ok) {
-        // Redirect to analysis page or show success message
-        alert("Requirements submitted successfully!")
+      const result = await response.json()
+
+      if (response.ok && result.success) {
+        console.log("✅ Requirements saved:", result.data)
+        setAnalysisResult(result.data)
+        // Loader will complete and show success
       } else {
-        alert("Failed to submit requirements. Please try again.")
+        setShowLoader(false)
+        alert(`Failed to submit requirements: ${result.message || result.error}`)
       }
     } catch (error) {
       console.error("Error submitting form:", error)
-      alert("An error occurred. Please try again.")
+      setShowLoader(false)
+      alert("An error occurred. Please make sure the backend server is running on http://localhost:5000")
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Navigation */}
+  const handleAnalysisComplete = () => {
+    // Show success message
+    alert(
+      `✅ Analysis Complete!\n\n` +
+      `Project ID: ${analysisResult?.projectId}\n` +
+      `Company ID: ${analysisResult?.companyId}\n\n` +
+      `All reports have been generated and saved.`
+    )
+    
+    // Optionally redirect to results page
+    // router.push(`/results/${analysisResult?.projectId}`)
+    
+    // Or reset form
+    setShowLoader(false)
+    setSelectedCompany(null)
+    setFormData({
+      companyId: "",
+      companyResources: "",
+      projectName: "",
+      projectDescription: "",
+      businessObjectives: "",
+      targetAudience: "",
+      budgetRange: "Flexible",
+      timeline: "Flexible",
+    })
+  }
 
-      {/* Main Content */}
-      <main className="container px-4 py-12 md:px-6 md:py-16">
+  return (
+    <>
+      {showLoader && <AnalysisLoader onComplete={handleAnalysisComplete} />}
+      
+      <div className="min-h-screen bg-white">
+        {/* Navigation */}
+
+        {/* Main Content */}
+        <main className="container px-4 py-12 md:px-6 md:py-16">
         <div className="mx-auto max-w-2xl">
           {/* Header */}
           <div className="mb-8 md:mb-12">
@@ -75,6 +158,55 @@ export default function RequirementsPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-8">
+            {/* Section 0: Company Selection */}
+            <section className="space-y-6 rounded-lg border border-orange-200 bg-white p-6 md:p-8">
+              <h2 className="text-xl font-semibold text-neutral-900">Company Information</h2>
+
+              <div>
+                <label htmlFor="companyId" className="block text-sm font-medium text-neutral-700">
+                  Select Company <span className="text-orange-500">*</span>
+                </label>
+                <select
+                  id="companyId"
+                  name="companyId"
+                  value={formData.companyId}
+                  onChange={handleCompanyChange}
+                  className="mt-2 w-full rounded-md border border-orange-200 bg-white px-4 py-3 text-neutral-900 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-200"
+                  required
+                >
+                  <option value="">-- Select a company --</option>
+                  {companies.map((company) => (
+                    <option key={company.company_id} value={company.company_id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="companyResources" className="block text-sm font-medium text-neutral-700">
+                  Company Resources
+                </label>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Describe your company's available resources, team size, budget, infrastructure, etc.
+                </p>
+                <textarea
+                  id="companyResources"
+                  name="companyResources"
+                  value={formData.companyResources}
+                  onChange={handleChange}
+                  placeholder="e.g., 'Software development team (10 engineers), Cloud infrastructure (AWS), $500K annual tech budget'"
+                  rows={4}
+                  className="mt-2 w-full rounded-md border border-orange-200 bg-white px-4 py-3 text-neutral-900 placeholder:text-neutral-400 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-200"
+                />
+                {selectedCompany?.company_resources && (
+                  <p className="mt-2 text-xs text-orange-600">
+                    💡 Pre-filled from previous entry. You can edit if needed.
+                  </p>
+                )}
+              </div>
+            </section>
+
             {/* Section 1: Main Project Details */}
             <section className="space-y-6 rounded-lg border border-orange-200 bg-white p-6 md:p-8">
               <h2 className="text-xl font-semibold text-neutral-900">Project Details</h2>
@@ -203,7 +335,10 @@ export default function RequirementsPage() {
               <button
                 type="button"
                 onClick={() => {
+                  setSelectedCompany(null)
                   setFormData({
+                    companyId: "",
+                    companyResources: "",
                     projectName: "",
                     projectDescription: "",
                     businessObjectives: "",
@@ -237,6 +372,7 @@ export default function RequirementsPage() {
           </div>
         </div>
       </main>
-    </div>
+      </div>
+    </>
   )
 }
