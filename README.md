@@ -1,3 +1,5 @@
+
+![Logo](Screenshot%202025-11-09%20121830.png)
 # BEVIN - Business Enhancement via Intelligent Navigation
 
 > AI-powered project management system that automates the entire software development lifecycle from requirements gathering to deployment.
