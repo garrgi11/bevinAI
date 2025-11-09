@@ -4,25 +4,25 @@ import { useEffect, useRef, useState } from "react"
 const integrations = [
   {
     name: "JIRA",
-    icon: "https://cdn.builder.io/api/v1/image/assets%2F1266dee22f9f4ea39c124bde63ed8528%2Fd2d81302dc20473ea740f0c0d0c52723?format=webp&width=800",
+    icon: "https://cdn.worldvectorlogo.com/logos/jira-1.svg",
     position: "top-[10%] left-[8%]",
     delay: 0,
   },
   {
     name: "Confluence",
-    icon: "https://cdn.builder.io/api/v1/image/assets%2F1266dee22f9f4ea39c124bde63ed8528%2Fd2d81302dc20473ea740f0c0d0c52723?format=webp&width=800",
+    icon: "https://cdn.worldvectorlogo.com/logos/confluence-1.svg",
     position: "top-[25%] right-[12%]",
     delay: 100,
   },
   {
-    name: "Github",
-    icon: "https://cdn.builder.io/api/v1/image/assets%2F1266dee22f9f4ea39c124bde63ed8528%2Fd2d81302dc20473ea740f0c0d0c52723?format=webp&width=800",
+    name: "GitHub",
+    icon: "https://cdn.worldvectorlogo.com/logos/github-icon-1.svg",
     position: "bottom-[30%] left-[15%]",
     delay: 200,
   },
   {
     name: "Slack",
-    icon: "https://cdn.builder.io/api/v1/image/assets%2F1266dee22f9f4ea39c124bde63ed8528%2Fd2d81302dc20473ea740f0c0d0c52723?format=webp&width=800",
+    icon: "https://cdn.worldvectorlogo.com/logos/slack-new-logo.svg",
     position: "bottom-[15%] right-[10%]",
     delay: 300,
   },
@@ -101,22 +101,30 @@ export default function Integrations() {
             </div>
           ))}
 
-          {/* Center card */}
+          {/* Center card with logos */}
           <div
             className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-all duration-700 ${
               isVisible ? "scale-100 opacity-100" : "scale-90 opacity-0"
             }`}
             style={{ transitionDelay: "150ms" }}
           >
-            <div className="relative overflow-hidden rounded-2xl border border-orange-200 bg-gradient-to-br from-white to-orange-50/50 p-8 shadow-xl ring-1 ring-orange-100">
-              <div className="relative z-10 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-lg">
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
+            <div className="relative overflow-hidden rounded-2xl border border-orange-200 bg-gradient-to-br from-white to-orange-50/50 p-6 shadow-xl ring-1 ring-orange-100">
+              <div className="relative z-10">
+                <h3 className="mb-4 text-center text-lg font-semibold text-neutral-900">Integrates with</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-white p-2 shadow-sm ring-1 ring-orange-100 transition-transform hover:scale-110">
+                    <img src="https://cdn.worldvectorlogo.com/logos/jira-1.svg" alt="Jira" className="h-full w-full object-contain" />
+                  </div>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-white p-2 shadow-sm ring-1 ring-orange-100 transition-transform hover:scale-110">
+                    <img src="https://cdn.worldvectorlogo.com/logos/confluence-1.svg" alt="Confluence" className="h-full w-full object-contain" />
+                  </div>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-white p-2 shadow-sm ring-1 ring-orange-100 transition-transform hover:scale-110">
+                    <img src="https://cdn.worldvectorlogo.com/logos/slack-new-logo.svg" alt="Slack" className="h-full w-full object-contain" />
+                  </div>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-white p-2 shadow-sm ring-1 ring-orange-100 transition-transform hover:scale-110">
+                    <img src="https://cdn.worldvectorlogo.com/logos/github-icon-1.svg" alt="GitHub" className="h-full w-full object-contain" />
+                  </div>
                 </div>
-                <h3 className="text-lg font-semibold text-neutral-900">Build together with</h3>
-                <p className="mt-1 text-sm text-neutral-600">Bevin.AI</p>
               </div>
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-orange-500/5 to-amber-500/10" />
             </div>

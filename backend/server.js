@@ -5,6 +5,7 @@ require('dotenv').config();
 const llmService = require('./services/llm.service');
 const mcpService = require('./services/mcp.service');
 const { testConnection } = require('./config/database');
+const { analyzeRequirementsForProject } = require('./services/analyzeRequirements.wrapper');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -92,43 +93,53 @@ app.post('/api/v1/requirements/submit', async (req, res) => {
 
     console.log('✅ Project saved with ID:', projectResult.projectId);
 
-    // Step 5: Analyze requirements with LLM
-    console.log('🤖 Analyzing requirements with AI...');
-    const analysis = await llmService.analyzeRequirements({
-      projectName,
-      projectDescription,
-      businessObjectives,
-      targetAudience,
-      budgetRange,
-      timeline
-    });
+    // Step 5: Run comprehensive analysis with LLM MCP
+    console.log('🤖 Starting comprehensive AI analysis...');
+    console.log('   This will generate:');
+    console.log('   1. Functional Requirements Report');
+    console.log('   2. Cost Analysis Report');
+    console.log('   3. Market Research Report');
+    
+    try {
+      const analysisResults = await analyzeRequirementsForProject(projectResult.projectId);
+      
+      console.log('✅ All reports generated and saved successfully');
 
-    // Step 6: Save the PRD report
-    console.log('📄 Saving PRD report...');
-    await mcpService.saveReport(
-      projectResult.projectId,
-      'prd',
-      analysis.content,
-      analysis.reasoning
-    );
-
-    res.json({
-      success: true,
-      message: 'Requirements analyzed and saved successfully',
-      data: {
-        projectId: projectResult.projectId,
-        companyId: company.company_id,
-        projectName,
-        analysis: analysis.content,
-        reasoning: analysis.reasoning,
-        usage: analysis.usage
-      }
-    });
+      res.json({
+        success: true,
+        message: 'Requirements analyzed and saved successfully',
+        data: {
+          projectId: projectResult.projectId,
+          companyId: company.company_id,
+          projectName,
+          reports: {
+            functional: analysisResults.functional,
+            cost: analysisResults.cost,
+            market_research: analysisResults.market_research
+          }
+        }
+      });
+    } catch (analysisError) {
+      console.error('❌ Analysis failed:', analysisError);
+      
+      // Project is saved, but analysis failed
+      res.status(500).json({
+        success: false,
+        error: 'Analysis failed',
+        message: analysisError.message,
+        data: {
+          projectId: projectResult.projectId,
+          companyId: company.company_id,
+          projectName,
+          note: 'Project was saved but analysis failed. You can retry analysis later.'
+        }
+      });
+    }
   } catch (error) {
-    console.error('❌ Error analyzing requirements:', error);
+    console.error('❌ Error processing requirements:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to analyze requirements',
+      error: 'Failed to process requirements',
       message: error.message
     });
   }

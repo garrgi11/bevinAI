@@ -11,6 +11,7 @@
     "test:db": "node test-db.js",
     "test:analysis": "node test-analysis.js",
     "test:mysql": "node test-mysql-connection.js",
+    "analyze": "node services/analyzeRequirements.mjs",
     "db:init": "node database/init-db.js",
     "db:setup": "node database/init-db.js",
     "db:seed": "node database/seed-companies.js"

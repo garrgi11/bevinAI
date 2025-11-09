@@ -65,7 +65,10 @@ npm start
 - `DELETE /api/v1/projects/:id/analysis` - Delete project analysis
 
 ### Requirements
-- `POST /api/v1/requirements/submit` - Submit project requirements (with AI analysis)
+- `POST /api/v1/requirements/submit` - Submit project requirements (with comprehensive AI analysis)
+  - Saves company and project data
+  - Generates 3 comprehensive reports (functional, cost, market research)
+  - Saves to both `report` and `project_analysis` tables
 
 ### LLM
 - `POST /api/v1/llm/test` - Test LLM with custom prompt
